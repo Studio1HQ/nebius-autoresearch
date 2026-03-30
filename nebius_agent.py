@@ -235,7 +235,7 @@ def run_agent(n_experiments: int | None = None, dry_run: bool = False) -> None:
     # Run baseline if no experiments have been recorded yet
     if not history:
         print("\n-- BASELINE RUN (no API call, just measuring current solve.py) --")
-        commit_hash = git_commit("baseline: initial solve.py")
+        commit_hash = git("rev-parse", "--short", "HEAD")
         score, proc_time = run_benchmark()
         if score and score > 0:
             append_result(commit_hash, score, proc_time or 0.0, "keep", "baseline")
