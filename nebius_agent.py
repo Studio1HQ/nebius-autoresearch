@@ -130,11 +130,7 @@ def propose_change(history: list[dict]) -> tuple[str, str]:
     program       = read_file("program.md") if os.path.exists("program.md") else ""
 
     best = best_score(history)
-    is_baseline = best == 0.0
-
-    status_str = ("No experiments yet — this is the baseline run. "
-                  "Return solve.py EXACTLY as-is, unchanged." if is_baseline
-                  else f"Best score so far: {best:.1f} entries/second")
+    status_str = f"Best score so far: {best:.1f} entries/second"
 
     prompt = f"""You are an expert Python performance engineer. You are running autonomous
 experiments to optimise a log-processing pipeline for maximum throughput.
@@ -154,7 +150,7 @@ experiments to optimise a log-processing pipeline for maximum throughput.
 ```
 
 ## Your task
-{"Return solve.py EXACTLY as-is for the baseline measurement." if is_baseline else "Propose ONE focused optimisation. Do NOT repeat failed experiments."}
+Propose ONE focused optimisation. Do NOT repeat failed experiments.
 
 Rules:
 - Keep the function signature: process(log_data: str) -> dict
@@ -170,7 +166,7 @@ CODE:
     result = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=4096,
+        max_tokens=8192,
     )
     raw = strip_thinking(result.choices[0].message.content)
 
@@ -235,6 +231,19 @@ def run_agent(n_experiments: int | None = None, dry_run: bool = False) -> None:
     ensure_results_tsv()
     history = read_results()
     exp_num = 0
+
+    # Run baseline if no experiments have been recorded yet
+    if not history:
+        print("\n-- BASELINE RUN (no API call, just measuring current solve.py) --")
+        commit_hash = git_commit("baseline: initial solve.py")
+        score, proc_time = run_benchmark()
+        if score and score > 0:
+            append_result(commit_hash, score, proc_time or 0.0, "keep", "baseline")
+            print(f">> Baseline score: {score:.1f} entries/sec ({proc_time:.3f}s)")
+        else:
+            print(">> WARNING: baseline failed!")
+            append_result(commit_hash, 0.0, 0.0, "crash", "baseline")
+        history = read_results()
 
     while n_experiments is None or exp_num < n_experiments:
         exp_num += 1
