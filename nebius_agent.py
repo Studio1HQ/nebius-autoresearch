@@ -13,6 +13,9 @@ Usage:
     python nebius_agent.py --dry-run             # see proposals without running
 """
 
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
 from openai import OpenAI
 import subprocess, os, re, time, argparse
 
