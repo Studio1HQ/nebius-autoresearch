@@ -40,7 +40,7 @@ def strip_thinking(text: str) -> str:
     return text.strip()
 
 def read_file(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         return f.read()
 
 def write_file(path: str, content: str) -> None:
@@ -196,10 +196,11 @@ def run_benchmark() -> tuple[float | None, float | None]:
     t0 = time.time()
 
     try:
-        with open(RUN_LOG, "w") as log_f:
+        with open(RUN_LOG, "w", encoding="utf-8", errors="replace") as log_f:
             proc = subprocess.Popen(
-                ["python", "benchmark.py"],
+                ["python", "-u", "benchmark.py"],
                 stdout=log_f, stderr=subprocess.STDOUT,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
             proc.wait(timeout=RUN_TIMEOUT)
         elapsed = time.time() - t0
