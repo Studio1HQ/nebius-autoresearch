@@ -6,9 +6,6 @@ In under 10 minutes, it made a data analytics pipeline 7x faster — processing 
 
 No synthetic benchmarks. No toy problems. Real data, real code, real speedups.
 
-![Dashboard showing score progression from baseline to 7x improvement](assets/dashboard-overview.png)
-*The live dashboard tracking the agent's optimization progress in real time.*
-
 ---
 
 ## Why This Is Different
@@ -135,8 +132,6 @@ trips_per_second:   24426.7
 num_trips:          500000
 ```
 
-![Terminal showing baseline benchmark output](assets/baseline-benchmark.png)
-*The baseline score — the naive implementation processes ~24K trips per second. Results vary by hardware.*
 
 Twenty seconds to process 500K rows. There's a lot of room to improve.
 
@@ -291,12 +286,7 @@ You can also launch the live dashboard to monitor progress in real time:
 ```bash
 python dashboard.py
 # Open http://localhost:5000
-```
 
-![Live dashboard with agent running](assets/dashboard-live.png)
-*The dashboard auto-refreshes every 3 seconds, showing score chart, experiment history, current code, and live logs.*
-
----
 
 ## What Actually Happened
 
@@ -335,10 +325,6 @@ After a full run of 18 experiments:
 - **Total time**: ~9 minutes (including API calls + benchmarking)
 - **Total cost**: ~$0.36 in API calls (real-time mode)
 
-![Dashboard stats panel showing final results](assets/final-results.png)
-*Final results on the dashboard — 7.2x speedup achieved autonomously.*
-
----
 
 ## Why the Loop Is Trustworthy
 
@@ -425,8 +411,6 @@ Optimize solve.py to maximize trips/sec on benchmark.py.
 
 The project includes a live web dashboard built with Flask and Chart.js. It's not just a monitoring tool — you can start and stop the agent directly from the browser.
 
-![Dashboard full view with all panels](assets/dashboard-full.png)
-*The complete dashboard: stats, score chart, agent controls, experiment table, code viewer, and live log.*
 
 Key features:
 - **Score progression chart** — every experiment plotted with color-coded status (green = kept, yellow = discarded, red = crashed)
