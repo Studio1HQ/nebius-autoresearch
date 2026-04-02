@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nebius AutoResearch — NYC Taxi Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --green:     #3fb950;
+      --red:       #f85149;
+      --yellow:    #d29922;
+      --blue:      #58a6ff;
+      --purple:    #bc8cff;
+      --nebius:    #7c5ae0;
+      --nebius-lt: #9b7de8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.3px;
+    }
+    .logo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--nebius);
+      box-shadow: 0 0 8px var(--nebius);
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .status-dot.running {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+    }
+    .card-body { padding: 18px; }
+
+    /* ── Stats row ───────────────────────────────────────────────────── */
+    .stats-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .stat-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .stat-value.green { color: var(--green); }
+    .stat-value.blue  { color: var(--blue); }
+    .stat-value.purple { color: var(--purple); }
+
+    /* ── Chart ───────────────────────────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      height: 280px;
+    }
+
+    /* ── Controls ────────────────────────────────────────────────────── */
+    .controls-card { grid-column: 2; grid-row: 2; }
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    label { font-size: 12px; color: var(--muted); font-weight: 500; }
+    input[type="text"], input[type="number"], input[type="password"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: monospace;
+      width: 100%;
+      transition: border-color 0.2s;
+    }
+    input:focus { outline: none; border-color: var(--nebius); }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toggle {
+      position: relative;
+      width: 36px; height: 20px;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider:before {
+      content: "";
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--nebius); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(16px); }
+
+    .btn-row { display: flex; gap: 10px; margin-top: 6px; }
+    .btn {
+      flex: 1;
+      padding: 9px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-start { background: var(--nebius); color: white; }
+    .btn-stop  { background: var(--red); color: white; }
+    .toast {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    .toast.ok  { background: rgba(63,185,80,0.15); border: 1px solid var(--green); color: var(--green); }
+    .toast.err { background: rgba(248,81,73,0.15);  border: 1px solid var(--red);   color: var(--red); }
+
+    /* ── Experiment table ────────────────────────────────────────────── */
+    .table-card { grid-column: 1 / -1; }
+    .table-wrap { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+    }
+    tbody tr {
+      border-bottom: 1px solid rgba(48,54,61,0.5);
+      transition: background 0.1s;
+    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    tbody td { padding: 9px 14px; font-variant-numeric: tabular-nums; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-keep    { background: rgba(63,185,80,0.15);  color: var(--green); }
+    .badge-discard { background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge-crash   { background: rgba(248,81,73,0.15);  color: var(--red); }
+    .score-highlight { color: var(--blue); font-weight: 700; }
+
+    /* ── Code viewer ─────────────────────────────────────────────────── */
+    .code-card { grid-column: 1; }
+    .code-wrap {
+      max-height: 420px;
+      overflow: auto;
+      background: #0d1117;
+    }
+    .code-wrap pre { margin: 0; }
+    .code-wrap code {
+      font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      tab-size: 4;
+    }
+
+    /* ── Log viewer ──────────────────────────────────────────────────── */
+    .log-card { grid-column: 2; }
+    .log-body {
+      background: #0d1117;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 14px;
+      max-height: 420px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #c9d1d9;
+    }
+    .log-body .ok   { color: var(--green); }
+    .log-body .err  { color: var(--red); }
+    .log-body .info { color: var(--blue); }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .empty-icon { font-size: 32px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    Nebius AutoResearch
+    <span style="color:var(--muted); font-weight:400; font-size:13px;">— NYC Taxi Analytics</span>
+  </div>
+  <div class="status-badge">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Idle</span>
+    <span style="color:var(--border); margin: 0 8px;">|</span>
+    <span style="color:var(--muted)">Model: Qwen3-235B-A22B-Thinking</span>
+    <span style="color:var(--border); margin: 0 8px;">|</span>
+    <span id="refresh-timer" style="color:var(--muted)">refreshing...</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Baseline</div>
+      <div class="stat-value" id="stat-baseline">—</div>
+      <div class="stat-sub">trips / second</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Best Score</div>
+      <div class="stat-value green" id="stat-best">—</div>
+      <div class="stat-sub">trips / second</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Speedup</div>
+      <div class="stat-value blue" id="stat-speedup">—</div>
+      <div class="stat-sub">over baseline</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Experiments</div>
+      <div class="stat-value purple" id="stat-total">0</div>
+      <div class="stat-sub" id="stat-breakdown">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Data</div>
+      <div class="stat-value" style="font-size:18px; color:var(--text)">500K</div>
+      <div class="stat-sub">real NYC taxi trips</div>
+    </div>
+  </div>
+
+  <!-- Score chart -->
+  <div class="card" style="grid-column: 1;">
+    <div class="card-header">
+      <span class="card-title">Score Progression</span>
+      <span style="font-size:11px; color:var(--muted)">trips / second — higher is better</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap">
+        <canvas id="scoreChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card controls-card">
+    <div class="card-header">
+      <span class="card-title">Agent Controls</span>
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>NEBIUS API KEY</label>
+          <input type="password" id="api-key" placeholder="v1.eyJ..." autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label>NUMBER OF EXPERIMENTS</label>
+          <input type="number" id="n-experiments" value="10" min="1" max="100" />
+        </div>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" id="use-batch" />
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:13px;">Use batch inference <span style="color:var(--green); font-size:11px;">(50% cheaper)</span></span>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-start" id="btn-start" onclick="startAgent()">▶ Start Agent</button>
+          <button class="btn btn-stop"  id="btn-stop"  onclick="stopAgent()" disabled>■ Stop</button>
+        </div>
+        <div class="toast" id="toast"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Experiment table -->
+  <div class="card table-card">
+    <div class="card-header">
+      <span class="card-title">Experiment History</span>
+      <span style="font-size:11px; color:var(--muted)" id="table-count">0 experiments</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Commit</th>
+            <th>Score (trips/s)</th>
+            <th>Time (s)</th>
+            <th>Status</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🔬</div>No experiments yet. Start the agent to begin.</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Code viewer -->
+  <div class="card code-card">
+    <div class="card-header">
+      <span class="card-title">Current solve.py</span>
+      <span style="font-size:11px; color:var(--muted)">best version the agent has found</span>
+    </div>
+    <div class="code-wrap">
+      <pre><code class="language-python" id="code-block"># Loading...</code></pre>
+    </div>
+  </div>
+
+  <!-- Log viewer -->
+  <div class="card log-card">
+    <div class="card-header">
+      <span class="card-title">Live Run Log</span>
+      <span style="font-size:11px; color:var(--muted)">last 60 lines of run.log</span>
+    </div>
+    <div class="log-body" id="log-body">Waiting for agent to run...</div>
+  </div>
+
+</main>
+
+<script>
+hljs.registerLanguage('python', window.hljsDefinePython);
+hljs.configure({ ignoreUnescapedHTML: true });
+
+// ── Chart setup ────────────────────────────────────────────────────────────
+const ctx = document.getElementById('scoreChart').getContext('2d');
+const scoreChart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: 'Score',
+        data: [],
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: [],
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      },
+      {
+        label: 'Best so far',
+        data: [],
+        borderColor: '#3fb950',
+        borderDash: [4, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        labels: { color: '#8b949e', boxWidth: 12, font: { size: 11 } }
+      },
+      tooltip: {
+        backgroundColor: '#161b22',
+        borderColor: '#30363d',
+        borderWidth: 1,
+        titleColor: '#e6edf3',
+        bodyColor: '#8b949e',
+        callbacks: {
+          label: ctx => ctx.dataset.label + ': ' + Math.round(ctx.raw).toLocaleString() + ' t/s'
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(48,54,61,0.5)' },
+        ticks: { color: '#8b949e', font: { size: 11 } }
+      },
+      y: {
+        grid: { color: 'rgba(48,54,61,0.5)' },
+        ticks: {
+          color: '#8b949e',
+          font: { size: 11 },
+          callback: v => Math.round(v).toLocaleString()
+        },
+        title: { display: false }
+      }
+    }
+  }
+});
+
+// ── State ──────────────────────────────────────────────────────────────────
+let isRunning = false;
+let lastCode  = '';
+let countdown = 3;
+
+// ── Data refresh ───────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([fetchResults(), fetchCode(), fetchLog(), fetchStatus()]);
+}
+
+async function fetchResults() {
+  try {
+    const res = await fetch('/api/results');
+    const data = await res.json();
+    updateStats(data);
+    updateChart(data.rows);
+    updateTable(data.rows);
+  } catch (e) { /* server not ready yet */ }
+}
+
+async function fetchCode() {
+  try {
+    const res = await fetch('/api/code');
+    const data = await res.json();
+    if (data.code !== lastCode) {
+      lastCode = data.code;
+      const block = document.getElementById('code-block');
+      block.textContent = data.code;
+      hljs.highlightElement(block);
+    }
+  } catch (e) {}
+}
+
+async function fetchLog() {
+  try {
+    const res = await fetch('/api/log');
+    const data = await res.json();
+    const el = document.getElementById('log-body');
+    if (!data.log) return;
+    // colorize
+    const colored = data.log
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/(✅[^\n]*)/g, '<span class="ok">$1</span>')
+      .replace(/(IMPROVED[^\n]*)/g, '<span class="ok">$1</span>')
+      .replace(/(💥[^\n]*|❌[^\n]*|FAIL[^\n]*|CRASH[^\n]*)/g, '<span class="err">$1</span>')
+      .replace(/(🤖[^\n]*|📝[^\n]*|📦[^\n]*|EXPERIMENT[^\n]*|BASELINE[^\n]*)/g, '<span class="info">$1</span>');
+    el.innerHTML = colored;
+    el.scrollTop = el.scrollHeight;
+  } catch (e) {}
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const dot  = document.getElementById('status-dot');
+    const txt  = document.getElementById('status-text');
+    const btnStart = document.getElementById('btn-start');
+    const btnStop  = document.getElementById('btn-stop');
+
+    isRunning = data.running;
+    if (isRunning) {
+      dot.classList.add('running');
+      txt.textContent = 'Agent running...';
+      btnStart.disabled = true;
+      btnStop.disabled  = false;
+    } else {
+      dot.classList.remove('running');
+      txt.textContent = 'Idle';
+      btnStart.disabled = false;
+      btnStop.disabled  = true;
+    }
+  } catch (e) {}
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats(data) {
+  const fmt = v => v > 0 ? Math.round(v).toLocaleString() : '—';
+  document.getElementById('stat-baseline').textContent = fmt(data.baseline);
+  document.getElementById('stat-best').textContent     = fmt(data.best);
+  document.getElementById('stat-speedup').textContent  = data.speedup > 1 ? data.speedup.toFixed(2) + 'x' : '—';
+  document.getElementById('stat-total').textContent    = data.total;
+  document.getElementById('stat-breakdown').textContent =
+    `${data.kept} kept · ${data.discarded} discarded · ${data.crashed} crashed`;
+  document.getElementById('table-count').textContent   = `${data.total} experiment${data.total !== 1 ? 's' : ''}`;
+}
+
+// ── Chart ──────────────────────────────────────────────────────────────────
+function updateChart(rows) {
+  const labels  = [];
+  const scores  = [];
+  const colors  = [];
+  const bestLine = [];
+  let runningBest = 0;
+
+  rows.forEach((r, i) => {
+    const label = r.description.toLowerCase().includes('baseline') ? 'Baseline' : `#${i}`;
+    labels.push(label);
+
+    const s = r.score;
+    scores.push(s > 0 ? s : null);
+
+    if (r.status === 'keep')    colors.push('#3fb950');
+    else if (r.status === 'crash') colors.push('#f85149');
+    else                         colors.push('#d29922');
+
+    if (s > runningBest) runningBest = s;
+    bestLine.push(runningBest);
+  });
+
+  scoreChart.data.labels = labels;
+  scoreChart.data.datasets[0].data = scores;
+  scoreChart.data.datasets[0].pointBackgroundColor = colors;
+  scoreChart.data.datasets[1].data = bestLine;
+  scoreChart.update('none');
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────
+function updateTable(rows) {
+  const tbody = document.getElementById('table-body');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🔬</div>No experiments yet. Start the agent to begin.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map((r, i) => {
+    const badgeClass = r.status === 'keep' ? 'badge-keep' : r.status === 'crash' ? 'badge-crash' : 'badge-discard';
+    const scoreStr = r.score > 0 ? `<span class="score-highlight">${Math.round(r.score).toLocaleString()}</span>` : '<span style="color:var(--red)">—</span>';
+    const desc = r.description.length > 70 ? r.description.slice(0, 70) + '…' : r.description;
+    return `<tr>
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td><code style="color:var(--yellow);font-size:11px">${r.commit}</code></td>
+      <td>${scoreStr}</td>
+      <td style="color:var(--muted)">${r.processing_time > 0 ? r.processing_time.toFixed(2) : '—'}</td>
+      <td><span class="badge ${badgeClass}">${r.status}</span></td>
+      <td style="color:var(--muted); font-size:12px">${desc}</td>
+    </tr>`;
+  }).reverse().join('');
+}
+
+// ── Agent controls ─────────────────────────────────────────────────────────
+async function startAgent() {
+  const apiKey = document.getElementById('api-key').value.trim();
+  const n      = parseInt(document.getElementById('n-experiments').value) || 10;
+  const batch  = document.getElementById('use-batch').checked;
+
+  if (!apiKey) { showToast('Please enter your Nebius API key.', 'err'); return; }
+
+  try {
+    const res = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey, n_experiments: n, batch }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`Agent started (PID ${data.pid}) — ${n} experiments${batch ? ' via batch' : ''}.`, 'ok');
+      fetchStatus();
+    } else {
+      showToast(data.error || 'Failed to start.', 'err');
+    }
+  } catch (e) {
+    showToast('Server error: ' + e.message, 'err');
+  }
+}
+
+async function stopAgent() {
+  try {
+    const res  = await fetch('/api/stop', { method: 'POST' });
+    const data = await res.json();
+    showToast(data.message, data.ok ? 'ok' : 'err');
+    fetchStatus();
+  } catch (e) {
+    showToast('Server error: ' + e.message, 'err');
+  }
+}
+
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type}`;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+// ── Auto-refresh every 3s ──────────────────────────────────────────────────
+function tick() {
+  countdown--;
+  document.getElementById('refresh-timer').textContent = `refresh in ${countdown}s`;
+  if (countdown <= 0) {
+    countdown = 3;
+    refreshAll();
+    document.getElementById('refresh-timer').textContent = 'refreshing...';
+  }
+}
+
+refreshAll();
+setInterval(tick, 1000);
+</script>
+
+</body>
+</html>

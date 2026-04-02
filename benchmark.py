@@ -1,144 +1,201 @@
 """
 benchmark.py — Fixed evaluation harness for Nebius AutoResearch.
 
-Generates 500K synthetic server log entries, runs solve.process(), verifies
-correctness against a golden reference, and scores throughput.
+Loads REAL NYC Yellow Taxi trip data (prepared by prepare_data.py), runs
+solve.process(), verifies correctness against a golden reference, and
+scores throughput.
 
-DO NOT MODIFY THIS FILE. This is the ground-truth evaluation, equivalent to
-prepare.py + evaluate_bpb() in Karpathy's autoresearch.
+DO NOT MODIFY THIS FILE. This is the ground-truth evaluation.
 
 Usage:
-    python benchmark.py
+    python prepare_data.py   # one-time data download
+    python benchmark.py      # run the benchmark
 
 Output:
     ---
-    score:              <entries_per_second>   (higher is better, 0 if incorrect)
+    score:              <trips_per_second>   (higher is better, 0 if incorrect)
     processing_time:    <seconds>
     correctness:        pass | FAIL
-    num_entries:        500000
+    num_trips:          500000
 """
 
-import random
+import os
 import time
 import math
-import json
 import sys
 import traceback
+from collections import Counter, defaultdict
+from datetime import datetime
 
 # ---------------------------------------------------------------------------
-# Fixed constants (DO NOT CHANGE)
+# Config
 # ---------------------------------------------------------------------------
 
-NUM_ENTRIES    = 500_000
-SEED           = 42
-TIME_BUDGET    = 30   # seconds — kill if exceeded
-
-ENDPOINTS = [
-    "/api/users", "/api/orders", "/api/products", "/api/auth/login",
-    "/api/search", "/api/feed", "/api/settings", "/api/notifications",
-    "/api/payments", "/health",
-]
-METHODS        = ["GET", "POST", "PUT", "DELETE"]
-STATUS_CODES   = [200, 201, 204, 301, 400, 401, 403, 404, 500, 502, 503]
-STATUS_WEIGHTS = [ 50,  10,   5,   5,   8,   5,   3,  10,   2,   1,   1]
+DATA_PATH   = os.path.join("data", "taxi_trips.csv")
+TIME_BUDGET = 30  # seconds
 
 # ---------------------------------------------------------------------------
-# Data generation (deterministic)
+# Load data
 # ---------------------------------------------------------------------------
 
-def _generate_ips(n=500):
-    rng = random.Random(SEED + 1)
-    return [f"{rng.randint(1,254)}.{rng.randint(0,255)}.{rng.randint(0,255)}.{rng.randint(1,254)}"
-            for _ in range(n)]
-
-_IPS = _generate_ips()
-
-def generate_logs(n=NUM_ENTRIES):
-    """Generate n deterministic log lines. Each line:
-       timestamp ip method endpoint status latency size
-    """
-    rng = random.Random(SEED)
-    lines = []
-    for _ in range(n):
-        h, m, s = rng.randint(0, 23), rng.randint(0, 59), rng.randint(0, 59)
-        ts = f"2024-01-15T{h:02d}:{m:02d}:{s:02d}"
-        ip       = rng.choice(_IPS)
-        method   = rng.choice(METHODS)
-        endpoint = rng.choice(ENDPOINTS)
-        status   = rng.choices(STATUS_CODES, weights=STATUS_WEIGHTS)[0]
-        latency  = round(rng.expovariate(10), 6)   # mean ~0.1 s
-        size     = rng.randint(64, 65536)
-        lines.append(f"{ts} {ip} {method} {endpoint} {status} {latency} {size}")
-    return "\n".join(lines)
+def load_csv(path: str) -> str:
+    """Read the CSV file and return everything after the header as a string."""
+    if not os.path.exists(path):
+        print(f"ERROR: {path} not found. Run 'python prepare_data.py' first.")
+        sys.exit(1)
+    with open(path, "r", encoding="utf-8") as f:
+        header = f.readline()
+        return f.read()
 
 # ---------------------------------------------------------------------------
 # Golden reference implementation
 # ---------------------------------------------------------------------------
 
-def _p95(values):
-    """95th percentile, consistent formula for solve.py to match."""
+def _parse_row(line: str) -> dict | None:
+    parts = line.split(",")
+    if len(parts) < 10:
+        return None
+    try:
+        return {
+            "pickup_datetime": parts[0],
+            "dropoff_datetime": parts[1],
+            "passenger_count": int(parts[2]),
+            "trip_distance": float(parts[3]),
+            "pickup_location": int(parts[4]),
+            "dropoff_location": int(parts[5]),
+            "payment_type": int(parts[6]),
+            "fare_amount": float(parts[7]),
+            "tip_amount": float(parts[8]),
+            "total_amount": float(parts[9]),
+        }
+    except (ValueError, IndexError):
+        return None
+
+
+def _trip_duration_minutes(pickup: str, dropoff: str) -> float | None:
+    try:
+        fmt = "%Y-%m-%d %H:%M:%S"
+        dt = (datetime.strptime(dropoff, fmt) - datetime.strptime(pickup, fmt)).total_seconds()
+        return dt / 60.0 if dt > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _p95(values: list[float]) -> float:
     s = sorted(values)
     idx = max(0, int(math.ceil(0.95 * len(s))) - 1)
-    return round(s[idx], 6)
+    return round(s[idx], 4)
 
-def compute_reference(log_data):
-    from collections import Counter
 
-    lines = log_data.split("\n")
-    ep_list, st_list, ip_list, hour_list, size_list = [], [], [], [], []
-    latencies_by_ep = {}
-    minute_list = []
+def compute_reference(csv_data: str) -> tuple[dict, int]:
+    """Compute golden reference answers. Returns (reference_dict, num_trips)."""
+    lines = csv_data.split("\n")
+
+    payment_revenue = defaultdict(float)
+    hourly_tip_sums = defaultdict(float)
+    hourly_tip_counts = defaultdict(int)
+    passenger_counts = Counter()
+    distances = []
+    durations = []
+    hourly_trip_counts = Counter()
+    pickup_pairs = Counter()
+    fare_per_mile_sums = defaultdict(float)
+    fare_per_mile_counts = defaultdict(int)
+    daily_revenue = defaultdict(float)
+    total_trips = 0
 
     for line in lines:
-        parts = line.split(" ")
-        ts, ip, method, endpoint = parts[0], parts[1], parts[2], parts[3]
-        status  = int(parts[4])
-        latency = float(parts[5])
-        size    = int(parts[6])
+        if not line.strip():
+            continue
+        row = _parse_row(line)
+        if row is None:
+            continue
 
-        ep_list.append(endpoint)
-        st_list.append(status)
-        ip_list.append(ip)
-        hour_list.append(int(ts[11:13]))
-        size_list.append(size)
-        minute_list.append(ts[11:16])
-        latencies_by_ep.setdefault(endpoint, []).append(latency)
+        total_trips += 1
+        pt = row["payment_type"]
+        payment_revenue[pt] += row["total_amount"]
 
-    ip_counter = Counter(ip_list)
+        hour = int(row["pickup_datetime"][11:13])
+        if row["tip_amount"] >= 0:
+            hourly_tip_sums[hour] += row["tip_amount"]
+            hourly_tip_counts[hour] += 1
 
-    # Top 10 IPs — deterministic tie-breaking: count desc, then IP string asc
-    sorted_ips = sorted(ip_counter.items(), key=lambda x: (-x[1], x[0]))
-    top_ips = [(ip, c) for ip, c in sorted_ips[:10]]
+        pc = min(row["passenger_count"], 7)
+        passenger_counts[pc] += 1
 
-    # Anomalous IPs
-    counts = list(ip_counter.values())
-    mean_c = sum(counts) / len(counts)
-    stddev_c = (sum((c - mean_c) ** 2 for c in counts) / len(counts)) ** 0.5
-    threshold = mean_c + 3 * stddev_c
-    anomalous_ips = sorted(ip for ip, c in ip_counter.items() if c > threshold)
+        distances.append(row["trip_distance"])
+
+        dur = _trip_duration_minutes(row["pickup_datetime"], row["dropoff_datetime"])
+        if dur is not None and dur > 0:
+            durations.append(dur)
+
+        hourly_trip_counts[hour] += 1
+
+        pair = (row["pickup_location"], row["dropoff_location"])
+        pickup_pairs[pair] += 1
+
+        if row["trip_distance"] > 0.5:
+            fpm = row["fare_amount"] / row["trip_distance"]
+            fare_per_mile_sums[hour] += fpm
+            fare_per_mile_counts[hour] += 1
+
+        day = row["pickup_datetime"][:10]
+        daily_revenue[day] += row["total_amount"]
+
+    payment_revenue_rounded = {k: round(v, 2) for k, v in payment_revenue.items()}
+
+    hourly_avg_tip = {}
+    for h in range(24):
+        if hourly_tip_counts[h] > 0:
+            hourly_avg_tip[h] = round(hourly_tip_sums[h] / hourly_tip_counts[h], 4)
+        else:
+            hourly_avg_tip[h] = 0.0
+
+    passenger_dist = dict(passenger_counts)
+
+    distance_p50 = round(sorted(distances)[len(distances) // 2], 4)
+    distance_p95 = _p95(distances)
+    distance_mean = round(sum(distances) / len(distances), 4)
+
+    duration_p95 = _p95(durations)
+
+    busiest_hours = [h for h, _ in hourly_trip_counts.most_common(5)]
+
+    top_routes = [(pair, count) for pair, count in pickup_pairs.most_common(10)]
+
+    avg_fare_per_mile_by_hour = {}
+    for h in range(24):
+        if fare_per_mile_counts[h] > 0:
+            avg_fare_per_mile_by_hour[h] = round(
+                fare_per_mile_sums[h] / fare_per_mile_counts[h], 4
+            )
+        else:
+            avg_fare_per_mile_by_hour[h] = 0.0
+
+    daily_revenue_rounded = {k: round(v, 2) for k, v in sorted(daily_revenue.items())}
 
     return {
-        "endpoint_request_counts": dict(Counter(ep_list)),
-        "status_code_counts":     dict(Counter(st_list)),
-        "top_ips":                top_ips,
-        "avg_latency_by_endpoint": {
-            ep: round(sum(lats) / len(lats), 6)
-            for ep, lats in latencies_by_ep.items()
+        "payment_revenue": payment_revenue_rounded,
+        "hourly_avg_tip": hourly_avg_tip,
+        "passenger_distribution": passenger_dist,
+        "distance_stats": {
+            "mean": distance_mean,
+            "p50": distance_p50,
+            "p95": distance_p95,
         },
-        "p95_latency_by_endpoint": {ep: _p95(lats) for ep, lats in latencies_by_ep.items()},
-        "peak_minute":    Counter(minute_list).most_common(1)[0][0],
-        "error_rate":     round(sum(1 for s in st_list if s >= 400) / len(st_list), 6),
-        "total_bytes":    sum(size_list),
-        "hourly_counts":  dict(Counter(hour_list)),
-        "anomalous_ips":  anomalous_ips,
-    }
+        "duration_p95_minutes": duration_p95,
+        "busiest_hours": busiest_hours,
+        "top_routes": top_routes,
+        "avg_fare_per_mile_by_hour": avg_fare_per_mile_by_hour,
+        "daily_revenue": daily_revenue_rounded,
+    }, total_trips
+
 
 # ---------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------
 
-def _match(ref, res, path, tol=1e-4):
-    """Recursively compare reference and result values."""
+def _match(ref, res, path, tol=1e-3):
     if isinstance(ref, tuple):
         ref = list(ref)
     if isinstance(res, tuple):
@@ -174,7 +231,7 @@ def _match(ref, res, path, tol=1e-4):
             print(f"  FAIL [{path}]: cannot compare as float")
             return False
         if abs(rf - rs) > tol * max(abs(rf), 1e-10):
-            print(f"  FAIL [{path}]: {rf:.6f} vs {rs:.6f}")
+            print(f"  FAIL [{path}]: {rf} vs {rs}")
             return False
         return True
 
@@ -192,18 +249,19 @@ def verify(result, reference):
         return False
     return all(_match(reference[k], result[k], k) for k in reference)
 
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print(f"Generating {NUM_ENTRIES:,} log entries...", flush=True)
-    log_data = generate_logs()
+    print(f"Loading taxi trip data from {DATA_PATH}...", flush=True)
+    csv_data = load_csv(DATA_PATH)
 
     print("Computing reference answers...", flush=True)
-    reference = compute_reference(log_data)
+    reference, num_trips = compute_reference(csv_data)
 
-    print(f"Running solve.process()...", flush=True)
+    print(f"Running solve.process() on {num_trips:,} real taxi trips...", flush=True)
 
     try:
         import solve
@@ -214,12 +272,12 @@ if __name__ == "__main__":
         print("score:              0.0")
         print("processing_time:    0.000")
         print("correctness:        FAIL")
-        print(f"num_entries:        {NUM_ENTRIES}")
+        print(f"num_trips:          {num_trips}")
         sys.exit(1)
 
     t0 = time.perf_counter()
     try:
-        result = solve.process(log_data)
+        result = solve.process(csv_data)
     except Exception as e:
         elapsed = time.perf_counter() - t0
         print(f"\nFAIL: solve.process() raised {type(e).__name__}: {e}")
@@ -228,7 +286,7 @@ if __name__ == "__main__":
         print("score:              0.0")
         print(f"processing_time:    {elapsed:.3f}")
         print("correctness:        FAIL")
-        print(f"num_entries:        {NUM_ENTRIES}")
+        print(f"num_trips:          {num_trips}")
         sys.exit(1)
     elapsed = time.perf_counter() - t0
 
@@ -238,11 +296,11 @@ if __name__ == "__main__":
         print("score:              0.0")
         print(f"processing_time:    {elapsed:.3f}")
         print("correctness:        timeout")
-        print(f"num_entries:        {NUM_ENTRIES}")
+        print(f"num_trips:          {num_trips}")
         sys.exit(1)
 
     correct = verify(result, reference)
-    throughput = NUM_ENTRIES / elapsed
+    throughput = num_trips / elapsed
     score = throughput if correct else 0.0
 
     print()
@@ -250,5 +308,5 @@ if __name__ == "__main__":
     print(f"score:              {score:.1f}")
     print(f"processing_time:    {elapsed:.3f}")
     print(f"correctness:        {'pass' if correct else 'FAIL'}")
-    print(f"entries_per_second: {throughput:.1f}")
-    print(f"num_entries:        {NUM_ENTRIES}")
+    print(f"trips_per_second:   {throughput:.1f}")
+    print(f"num_trips:          {num_trips}")
