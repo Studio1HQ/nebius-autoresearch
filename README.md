@@ -38,7 +38,7 @@ Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch),
 │                                       └──────────────────┘     │
 └─────────────────────────────────────────────────────────────────┘
 ```
-![Architecture Diagram](nebius-autoresearch\assets\arch-diagram.svg)
+![Architecture Diagram](assets/arch-diagram.svg)
 
 ## Project Structure
 
